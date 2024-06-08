@@ -2,7 +2,7 @@ from operator import itemgetter
 import numpy as np
 import heapq
 import math
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import sys
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -196,14 +196,19 @@ class Player1:
     def set_target(self, target_pos, target_type):
         self.target_pos = target_pos
         self.target_type = target_type
-        print('Set Target:', self.target_type, '-', self.target_pos)
-        self.curr_path = self.a_star_path(self.mpos, self.target_pos)
         self.t = 0
+        if self.verbosity > 0:
+            print('Set Target:', self.target_type, '-', self.target_pos)
+        if self.target_pos != None:
+            self.curr_path = self.a_star_path(self.mpos, self.target_pos)
+            if len(self.curr_path) == 0:
+                return False
+        return True
 
     def has_valid_target(self):
         return (self.target_pos is not None) and (self.read_map(self.target_pos) == self.target_type)
     
-    def next_dir_to_target(self):
+    def next_dir_to_target(self):  
         dir = self.curr_path[self.t]
         p = sim_move(self.mpos, dir)
         if dist(p, self.opos) <= 1:
@@ -237,24 +242,24 @@ class Player1:
             u = self.calc_cu(coin)
             self.coin_utils.push(-u, tuple(coin))
             cu_map[coin[1]][coin[0]] = u
-        heatmap.set_data(cu_map)
-        fig.canvas.draw()
-        fig.canvas.flush_events()
-        plt.show()
+        # heatmap.set_data(cu_map)
+        # fig.canvas.draw()
+        # fig.canvas.flush_events()
+        # plt.show()
 
-fig, ax = plt.subplots()
-heatmap = ax.imshow(np.zeros(shape=(30, 40)), cmap='hot', interpolation='none')
-cbar = plt.colorbar(heatmap)
-plt.ion()
-plt.show()
+# fig, ax = plt.subplots()
+# heatmap = ax.imshow(np.zeros(shape=(30, 40)), cmap='hot', interpolation='none')
+# cbar = plt.colorbar(heatmap)
+# plt.ion()
+# plt.show()
 
 p1 = None
 
-seek_food_range = 15
-low_hunger_thresh = 25
+seek_food_range = 20
+low_hunger_thresh = 35
 
 reroute_food_range = 5
-high_hunger_thresh = 40
+high_hunger_thresh = 35
 
 seek_pot_range = 15
 low_stam_thresh = 25
@@ -262,7 +267,7 @@ low_stam_thresh = 25
 reroute_pot_range = 5
 high_stam_thresh = 40
 
-cvw_m_dist = 12
+cvw_m_dist = 15
 cvw_o_dist = 5
 cvw_surround = 4
 
@@ -288,25 +293,40 @@ def player1_logic(coins, potions, foods, dungeon_map, self_position, other_agent
         if p1.has_valid_target():
             if p1.target_type == 'coin':
                 if len(food_dists) > 0 and p1.hunger < high_hunger_thresh and food_dists[0][0] < reroute_food_range:
-                    p1.set_target(food_dists[0][1], 'food')
+                    t = p1.set_target(food_dists[0][1], 'food')
+                    if not t:
+                        p1.set_target(None, None)
                 elif len(pot_dists) > 0 and p1.stamina < high_stam_thresh and pot_dists[0][0] < reroute_pot_range:
-                    p1.set_target(pot_dists[0][1], 'pot')
+                    t = p1.set_target(pot_dists[0][1], 'pot')
+                    if not t:
+                        p1.set_target(None, None)
                 elif p1.coin_utils.front()[1] != p1.target_pos and p1.calc_cu(p1.target_pos) + 10 < p1.coin_utils.front()[0]:
-                    p1.set_target(p1.coin_utils.pop()[1], 'coin')
+                    t = p1.set_target(p1.coin_utils.pop()[1], 'coin')
+                    if not t:
+                        p1.set_target(None, None)
             if dist(p1.mpos, p1.target_pos) == 0:
                 p1.set_target(None, None)
             else:
                 next_dir = p1.next_dir_to_target()
         if not p1.has_valid_target():
             if len(food_dists) > 0 and p1.hunger < low_hunger_thresh and food_dists[0][0] < seek_food_range:
-                p1.set_target(food_dists[0][1], 'food')
-                next_dir = p1.next_dir_to_target()
+                t = p1.set_target(food_dists[0][1], 'food')
+                if not t:
+                    p1.set_target(None, None)
+                else:
+                    next_dir = p1.next_dir_to_target()
             elif len(pot_dists) > 0 and p1.stamina < low_stam_thresh and pot_dists[0][0] < seek_pot_range:
-                p1.set_target(pot_dists[0][1], 'pot')
-                next_dir = p1.next_dir_to_target()
+                t = p1.set_target(pot_dists[0][1], 'pot')
+                if not t:
+                    p1.set_target(None, None)
+                else:
+                    next_dir = p1.next_dir_to_target()
             elif len(p1.coin_utils) > 0:
-                p1.set_target(p1.coin_utils.pop()[1], 'coin')
-                next_dir = p1.next_dir_to_target()
+                t = p1.set_target(p1.coin_utils.pop()[1], 'coin')
+                if not t:
+                    p1.set_target(None, None)
+                else:
+                    next_dir = p1.next_dir_to_target()
     return p1.move(next_dir)
 
 # Idea: gradient descent on a heatmap of the dungeon map, where the hottest zones are the coin
