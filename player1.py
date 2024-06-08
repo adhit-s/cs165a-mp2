@@ -1,6 +1,40 @@
 from operator import itemgetter
 import numpy as np
 import heapq
+import math
+import matplotlib.pyplot as plt
+import sys
+
+np.set_printoptions(threshold=sys.maxsize)
+
+directions = { 'W': (0, -1), 'A': (-1, 0), 'S': (0, 1), 'D': (1, 0) }
+reverse_directions = dict((v, k) for k, v in directions.items())
+surrounding = np.array([ 
+    (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1),
+    (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (2, -1), (2, -2), (1, -2), (0, -2), (-1, -2), (-2, -2), (-2, -1), (-2, 0), (-2, 1), (-2, 2), (-1, 2), 
+    (-1, 3), (0, 3), (1, 3), (3, 1), (3, 0), (3, -1), (-1, -3), (0, -3), (1, -3), (-3, -1), (-3, 0), (-3, 1)
+])
+
+def sim_move(pos, dir):
+    return sim_move_2(pos, directions[dir])
+
+def sim_move_2(pos, offsets):
+    return (pos[0] + offsets[0], pos[1] + offsets[1])
+
+def in_bounds(pos):
+    return pos[0] >= 0 and pos[0] < 40 and pos[1] >= 0 and pos[1] < 30
+
+def manhattan_distance(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+def euclidean_distance(a, b):
+    return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
+
+def dist(a, b):
+    return euclidean_distance(a, b)
+
+def sigmoid(x):
+    return 1 / (1 + math.pow(math.e, -x))
 
 class PrioritySet(object):
     def __init__(self):
@@ -12,10 +46,13 @@ class PrioritySet(object):
             heapq.heappush(self.heap, (pri, d))
             self.set.add(d)
 
+    def front(self):
+        return self.heap[0]
+
     def pop(self):
         pri, d = heapq.heappop(self.heap)
         self.set.remove(d)
-        return d
+        return (pri, d)
     
     def __len__(self):
         return len(self.heap)
@@ -60,7 +97,7 @@ class Player1:
         self.edit_map(self.mpos, 'me')
         self.edit_map(self.opos, 'opp')
 
-        if self.verbosity > 0:
+        if self.verbosity > 1:
             print(f'Turn: {self.turn} | Score: {self.score} | Hunger: {self.hunger} | Stamina: {self.stamina} | Mpos: {self.mpos} | Opos: {self.opos}')
 
     def read_map(self, pos):
@@ -82,7 +119,7 @@ class Player1:
                 p1.hunger = max(0, min(50, p1.hunger + 30))
         self.last_mpos = self.mpos
         self.last_opos = self.opos
-        if self.verbosity > 0:
+        if self.verbosity > 1:
             print('Move:', dir)
         return dir
     
@@ -132,7 +169,7 @@ class Player1:
         open.push(0, start)
 
         while len(open) > 0:
-            curr = open.pop()
+            curr = open.pop()[1]
             curr_nm = self.nm(curr)
             curr_nm['closed'] = True
 
@@ -159,6 +196,7 @@ class Player1:
     def set_target(self, target_pos, target_type):
         self.target_pos = target_pos
         self.target_type = target_type
+        print('Set Target:', self.target_type, '-', self.target_pos)
         self.curr_path = self.a_star_path(self.mpos, self.target_pos)
         self.t = 0
 
@@ -173,21 +211,66 @@ class Player1:
         self.t += 1
         return dir
     
-directions = { 'W': (0, -1), 'A': (-1, 0), 'S': (0, 1), 'D': (1, 0) }
-reverse_directions = dict((v, k) for k, v in directions.items())
+    def realistic_dist(self, a, b):
+        # TODO: return euclidean dist, but each wall block between a and b is weighted significantly more
+        pass
 
-def sim_move(pos, dir):
-    return (pos[0] + directions[dir][0], pos[1] + directions[dir][1])
+    def calc_cu(self, coin):
+        u = cvw_m_dist * -dist(self.mpos, coin) + cvw_o_dist * dist(self.opos, coin)
+        for offset in surrounding:
+            neighbor = sim_move_2(coin, offset)
+            if in_bounds(neighbor) and self.read_map(neighbor) == 'coin':
+                u += cvw_surround
+        for food in self.foods:
+            if dist(coin, food) < cvw_food_range:
+                u += cvw_food_near
+        for pot in self.pots:
+            if dist(coin, pot) < cvw_pot_range:
+                u += cvw_pot_near
+        # u = sigmoid(u)
+        return u
+    
+    def refresh_coin_utils(self):
+        self.coin_utils = PrioritySet()
+        cu_map = np.zeros(self.map.shape) - 100
+        for coin in self.coins:
+            u = self.calc_cu(coin)
+            self.coin_utils.push(-u, tuple(coin))
+            cu_map[coin[1]][coin[0]] = u
+        heatmap.set_data(cu_map)
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        plt.show()
 
-def dist(a, b):
-    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+fig, ax = plt.subplots()
+heatmap = ax.imshow(np.zeros(shape=(30, 40)), cmap='hot', interpolation='none')
+cbar = plt.colorbar(heatmap)
+plt.ion()
+plt.show()
 
 p1 = None
 
-hunger_threshold = 25
-food_range = 25
-stam_threshold = 25
-pot_range = 25
+seek_food_range = 15
+low_hunger_thresh = 25
+
+reroute_food_range = 5
+high_hunger_thresh = 40
+
+seek_pot_range = 15
+low_stam_thresh = 25
+
+reroute_pot_range = 5
+high_stam_thresh = 40
+
+cvw_m_dist = 12
+cvw_o_dist = 5
+cvw_surround = 4
+
+cvw_food_range = 10
+cvw_food_near = 25
+
+cvw_pot_range = 10
+cvw_pot_near = 25
 
 def player1_logic(coins, potions, foods, dungeon_map, self_position, other_agent_position):
     global p1
@@ -196,25 +279,33 @@ def player1_logic(coins, potions, foods, dungeon_map, self_position, other_agent
         p1 = Player1(self_position, other_agent_position, verbosity = 0)
     p1.new_turn(dungeon_map, coins, potions, foods, self_position, other_agent_position)
 
+    pot_dists = sorted([ (dist(self_position, pot), tuple(pot)) for pot in p1.pots ], key=itemgetter(0))
+    food_dists = sorted([ (dist(self_position, food), tuple(food)) for food in p1.foods ], key=itemgetter(0))
+    p1.refresh_coin_utils()
+
     next_dir = 'I'
     if (p1.stamina > 10 and p1.hunger > 0) or p1.hunger == 0:
         if p1.has_valid_target():
+            if p1.target_type == 'coin':
+                if len(food_dists) > 0 and p1.hunger < high_hunger_thresh and food_dists[0][0] < reroute_food_range:
+                    p1.set_target(food_dists[0][1], 'food')
+                elif len(pot_dists) > 0 and p1.stamina < high_stam_thresh and pot_dists[0][0] < reroute_pot_range:
+                    p1.set_target(pot_dists[0][1], 'pot')
+                elif p1.coin_utils.front()[1] != p1.target_pos and p1.calc_cu(p1.target_pos) + 10 < p1.coin_utils.front()[0]:
+                    p1.set_target(p1.coin_utils.pop()[1], 'coin')
             if dist(p1.mpos, p1.target_pos) == 0:
                 p1.set_target(None, None)
             else:
                 next_dir = p1.next_dir_to_target()
         if not p1.has_valid_target():
-            coin_dists = sorted([ (dist(self_position, coin), tuple(coin)) for coin in p1.coins ], key=itemgetter(0))
-            pot_dists = sorted([ (dist(self_position, pot), tuple(pot)) for pot in p1.pots ], key=itemgetter(0))
-            food_dists = sorted([ (dist(self_position, food), tuple(food)) for food in p1.foods ], key=itemgetter(0))
-            if p1.hunger < hunger_threshold and len(food_dists) > 0 and food_dists[0][0] < food_range:
+            if len(food_dists) > 0 and p1.hunger < low_hunger_thresh and food_dists[0][0] < seek_food_range:
                 p1.set_target(food_dists[0][1], 'food')
                 next_dir = p1.next_dir_to_target()
-            elif p1.stamina < stam_threshold and len(pot_dists) > 0 and pot_dists[0][0] < pot_range:
+            elif len(pot_dists) > 0 and p1.stamina < low_stam_thresh and pot_dists[0][0] < seek_pot_range:
                 p1.set_target(pot_dists[0][1], 'pot')
                 next_dir = p1.next_dir_to_target()
-            elif len(coin_dists) > 0:
-                p1.set_target(coin_dists[0][1], 'coin')
+            elif len(p1.coin_utils) > 0:
+                p1.set_target(p1.coin_utils.pop()[1], 'coin')
                 next_dir = p1.next_dir_to_target()
     return p1.move(next_dir)
 
