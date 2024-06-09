@@ -3,29 +3,17 @@ import numpy as np
 import heapq
 import math
 import sys
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 np.set_printoptions(threshold=sys.maxsize)
 
 directions = { 'W': (0, -1), 'A': (-1, 0), 'S': (0, 1), 'D': (1, 0) }
 reverse_directions = dict((v, k) for k, v in directions.items())
-surround_1 = np.array([ 
-    (0, 1), (1, 0), (0, -1), (-1, 0)
-])
-surround_2 = np.array([ 
-    (0, 1), (1, 0), (0, -1), (-1, 0), 
-    (-1, -1), (-1, 1), (1, 1), (1, -1),
-])
-surround_3 = np.array([ 
+surrounding = np.array([ 
     (0, 1), (1, 0), (0, -1), (-1, 0), 
     (-1, -1), (-1, 1), (1, 1), (1, -1), 
-    (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (2, -1), (2, -2), (1, -2), (0, -2), (-1, -2), (-2, -2), (-2, -1), (-2, 0), (-2, 1), (-2, 2), (-1, 2),
-])
-surround_4 = np.array([ 
-    (0, 1), (1, 0), (0, -1), (-1, 0), 
-    (-1, -1), (-1, 1), (1, 1), (1, -1), 
-    (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (2, -1), (2, -2), (1, -2), (0, -2), (-1, -2), (-2, -2), (-2, -1), (-2, 0), (-2, 1), (-2, 2), (-1, 2), 
-    (-1, 3), (0, 3), (1, 3), (3, 1), (3, 0), (3, -1), (-1, -3), (0, -3), (1, -3), (-3, -1), (-3, 0), (-3, 1)
+    # (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (2, -1), (2, -2), (1, -2), (0, -2), (-1, -2), (-2, -2), (-2, -1), (-2, 0), (-2, 1), (-2, 2), (-1, 2), 
+    # (-1, 3), (0, 3), (1, 3), (3, 1), (3, 0), (3, -1), (-1, -3), (0, -3), (1, -3), (-3, -1), (-3, 0), (-3, 1)
 ])
 
 def sim_move(pos, dir):
@@ -68,7 +56,7 @@ class PrioritySet(object):
         return len(self.heap)
 
 class Player1:
-    def __init__(self, self_position, other_agent_position, params, verbosity = 1):
+    def __init__(self, self_position, other_agent_position, verbosity = 1):
         self.turn = 0
         self.score = 0
         self.hunger = 50
@@ -76,13 +64,11 @@ class Player1:
 
         self.last_mpos = self_position
         self.last_opos = other_agent_position
-        self.m_visited = np.zeros((30, 40))
-        self.o_visited = np.zeros((30, 40))
+        self.visited = []
 
         self.target_pos = None
         self.target_type = None
 
-        self.p = params
         self.verbosity = verbosity
 
     def new_turn(self, dungeon_map, coins, potions, foods, self_position, other_agent_position):
@@ -95,8 +81,7 @@ class Player1:
 
         self.mpos = self_position
         self.opos = other_agent_position
-        self.m_visited[self.mpos[1]][self.mpos[0]] = 1
-        self.o_visited[self.opos[1]][self.opos[0]] = 1
+        self.visited.append(self.mpos)
 
         self.map = np.array(dungeon_map)
         self.coins = np.array(coins)
@@ -139,7 +124,7 @@ class Player1:
         return dir
     
     def is_traversable(self, pos):
-        if pos[1] < 0 or pos[1] >= self.map.shape[0] or pos[0] < 0 or pos[0] >= self.map.shape[1]:
+        if pos[1] < 0 or pos[1] >= self.map.shape[0] or pos[0] < 0 or pos[1] >= self.map.shape[1]:
             return False
         p = self.read_map(pos)
         return p != 'wall' and p != 'opp'
@@ -147,23 +132,21 @@ class Player1:
     def nm(self, pos):
         return self.node_meta[pos[1]][pos[0]]
     
-    def backtrace_path(self, start, goal):
+    def backtrace_path(self):
         path = []
-        curr_pos = goal
+        curr_pos = self.target_pos
         curr_nm = self.nm(curr_pos)
-        while curr_pos != start:
+        while curr_pos != self.start_pos:
             delta = tuple(np.subtract(curr_pos, curr_nm['parent']))
             path.append(reverse_directions[delta])
             curr_pos = curr_nm['parent']
             curr_nm = self.nm(curr_pos)
         path.reverse()
-        if self.verbosity > 1:
-            print('Start:', start, '| Goal:', goal, '| Path:', path)
+        if self.verbosity > 0:
+            print('Start:', self.mpos, '| Goal:', self.target_pos, '| Path:', path)
         return path
 
     def a_star_path(self, start, goal):
-        start = tuple(start)
-        goal = tuple(goal)
         self.node_meta = []
         for r in range(self.map.shape[0]):
             row = []
@@ -196,10 +179,10 @@ class Player1:
                     succ_nm = self.nm(succ)
                     if succ == goal:
                         succ_nm['parent'] = curr
-                        return self.backtrace_path(start, goal)
+                        return self.backtrace_path()
                     if not succ_nm['closed']:
                         g_new = curr_nm['g'] + 1
-                        h_new = self.realistic_dist(succ, goal)
+                        h_new = dist(succ, goal)
                         f_new = g_new + h_new - (3 if self.read_map(succ) == 'coin' else -3)
                         if succ_nm['f'] == float('inf') or succ_nm['f'] > f_new:
                             open.push(f_new, succ)
@@ -211,6 +194,7 @@ class Player1:
         return []
     
     def set_target(self, target_pos, target_type):
+        self.start_pos = self.mpos
         self.target_pos = target_pos
         self.target_type = target_type
         self.t = 0
@@ -220,8 +204,6 @@ class Player1:
             self.curr_path = self.a_star_path(self.mpos, self.target_pos)
             if len(self.curr_path) == 0:
                 return False
-        if self.verbosity > 0:
-            print('Target Path:', self.curr_path)
         return True
 
     def has_valid_target(self):
@@ -230,8 +212,7 @@ class Player1:
     def next_dir_to_target(self):  
         dir = self.curr_path[self.t]
         p = sim_move(self.mpos, dir)
-        if dist(p, self.opos) == 0:
-            self.set_target(self.target_pos, self.target_type)
+        if dist(p, self.opos) <= 1:
             return 'I'
         self.t += 1
         return dir
@@ -252,136 +233,115 @@ class Player1:
                 d += 1
         return d
 
-    def calc_cu(self, coin):
-        mrd = self.realistic_dist(self.mpos, coin)
-        u = self.p['cvw_greed'] * -mrd + self.p['cvw_fear'] * self.realistic_dist(self.opos, coin)
-        for off in surround_2:
-            neighbor = sim_move_2(coin, off)
-            if self.is_traversable(neighbor) and self.read_map(neighbor) == 'coin':
-                u += self.p['cvw_surround']
-        for food in self.foods:
-            if self.realistic_dist(coin, food) < self.p['cvw_food_range']:
-                u += self.p['cvw_food_near']
-        for pot in self.pots:
-            if self.realistic_dist(coin, pot) < self.p['cvw_pot_range']:
-                u += self.p['cvw_pot_near']
-        if mrd < 15:
-            path_to_coin = self.a_star_path(self.mpos, coin)
-            cpos = self.mpos
-            for move in path_to_coin:
-                cpos = sim_move(cpos, move)
-                if self.read_map(cpos) == 'coin':
-                    u += self.p['cvw_coin_in_route']
-                elif self.read_map(cpos) == 'floor':
-                    u -= self.p['cvw_floor_penalty']
-                if self.m_visited[cpos[1]][cpos[0]] == 1:
-                    u -= self.p['cvw_backtrack_penalty']
-                if self.o_visited[cpos[1]][cpos[0]] == 1:
-                    u -= self.p['cvw_goblin_penalty']
+    def calc_pu(self, pos):
+        if not self.is_traversable(pos):
+            return -1000
+        # u = cvw_o_dist * self.realistic_dist(pos, self.opos)
+        u = 0
+        if self.read_map(pos) == 'coin':
+            u += 100
+        elif self.read_map(pos) == 'pot':
+            u += 50
+        elif self.read_map(pos) == 'food':
+            u += 50
+        # for offset in surrounding:
+        #     neighbor = sim_move_2(pos, offset)
+        #     if self.is_traversable(neighbor) and self.read_map(neighbor) == 'coin':
+        #         u += cvw_surround
+        # for food in self.foods:
+        #     if self.realistic_dist(pos, food) < cvw_food_range:
+        #         u += cvw_food_near
+        # for pot in self.pots:
+        #     if self.realistic_dist(pos, pot) < cvw_pot_range:
+        #         u += cvw_pot_near
         # u = sigmoid(u)
         return u
     
-    def refresh_coin_utils(self):
-        self.coin_utils = PrioritySet()
-        cu_map = np.zeros(self.map.shape) - 100
-        for coin in self.coins:
-            u = self.calc_cu(coin)
-            self.coin_utils.push(-u, tuple(coin))
-            cu_map[coin[1]][coin[0]] = u
-#         heatmap.set_data(cu_map)
-#         fig.canvas.draw()
-#         fig.canvas.flush_events()
-#         plt.show()
-
-# fig, ax = plt.subplots()
-# heatmap = ax.imshow(np.zeros(shape=(30, 40)), cmap='hot', interpolation='none')
-# cbar = plt.colorbar(heatmap)
-# plt.ion()
-# plt.show()
+    def expectimax(self, pos, dir='', is_max=True, depth=3):
+        if depth == 0:
+            return [ self.calc_pu(pos), dir ]
+        if dir != '' and self.is_traversable(sim_move(pos, dir)):
+            pos = sim_move(pos, dir)
+        if is_max:
+            maxes = [
+                self.expectimax(pos, 'W', False, depth - 1),
+                self.expectimax(pos, 'A', False, depth - 1),
+                self.expectimax(pos, 'S', False, depth - 1),
+                self.expectimax(pos, 'D', False, depth - 1)
+            ]
+            # print(maxes)
+            m = maxes[0]
+            for i in range(1, 4):
+                if maxes[i][0] > m[0]:
+                    m = maxes[i]
+            return m
+        else:
+            p = np.random.random(4)
+            p /= p.sum()
+            return [(
+                p[0] * self.expectimax(pos, 'W', True, depth - 1)[0] 
+                + p[1] * self.expectimax(pos, 'A', True, depth - 1)[0] 
+                + p[2] * self.expectimax(pos, 'S', True, depth - 1)[0] 
+                + p[3] * self.expectimax(pos, 'D', True, depth - 1)[0]
+            ) / 4, dir]
 
 p1 = None
 
-params = {
-    'seek_food_range': 30,
-    'low_hunger_thresh': 25,
+seek_food_range = 15
+low_hunger_thresh = 20
 
-    'reroute_food_range': 5,
-    'high_hunger_thresh': 40,
+reroute_food_range = 5
+high_hunger_thresh = 30
 
-    'seek_pot_range': 20,
-    'low_stam_thresh': 25,
+seek_pot_range = 15
+low_stam_thresh = 25
 
-    'reroute_pot_range': 5,
-    'high_stam_thresh': 40,
+reroute_pot_range = 5
+high_stam_thresh = 40
 
-    'cvw_greed': 7,
-    'cvw_greed_init': 7,
-    'cvw_greed_inc': 0.25,
-    'cvw_fear': 2,
-    'cvw_surround': 7,
-    'cvw_coin_in_route': 15,
-    'cvw_backtrack_penalty': 15,
-    'cvw_floor_penalty': 10,
-    'cvw_goblin_penalty': 20,
+cvw_m_dist = 10
+cvw_o_dist = 5
+cvw_surround = 5
 
-    'cvw_food_range': 10,
-    'cvw_food_near': 150,
+cvw_food_range = 10
+cvw_food_near = 30
 
-    'cvw_pot_range': 10,
-    'cvw_pot_near': 150
-}
+cvw_pot_range = 10
+cvw_pot_near = 30
 
 def player1_logic(coins, potions, foods, dungeon_map, self_position, other_agent_position):
     global p1
 
     if p1 is None:
-        p1 = Player1(self_position, other_agent_position, params, verbosity = 0)
+        p1 = Player1(self_position, other_agent_position, verbosity = 1)
     p1.new_turn(dungeon_map, coins, potions, foods, self_position, other_agent_position)
 
     pot_dists = sorted([ (p1.realistic_dist(self_position, pot), tuple(pot)) for pot in p1.pots ], key=itemgetter(0))
     food_dists = sorted([ (p1.realistic_dist(self_position, food), tuple(food)) for food in p1.foods ], key=itemgetter(0))
-    p1.refresh_coin_utils()
-
-    p1.p['cvw_greed'] = p1.p['cvw_greed_inc'] * (50 - p1.hunger) + p1.p['cvw_greed_init']
 
     next_dir = 'I'
     if (p1.stamina > 10 and p1.hunger > 0) or p1.hunger == 0:
         if p1.has_valid_target():
-            if p1.target_type == 'coin':
-                if len(food_dists) > 0 and p1.hunger < p1.p['high_hunger_thresh'] and food_dists[0][0] < p1.p['reroute_food_range']:
-                    t = p1.set_target(food_dists[0][1], 'food')
-                    if not t:
-                        p1.set_target(None, None)
-                elif len(pot_dists) > 0 and p1.stamina < p1.p['high_stam_thresh'] and pot_dists[0][0] < p1.p['reroute_pot_range']:
-                    t = p1.set_target(pot_dists[0][1], 'pot')
-                    if not t:
-                        p1.set_target(None, None)
-                elif p1.coin_utils.front()[1] != p1.target_pos and p1.calc_cu(p1.target_pos) + 10 < p1.coin_utils.front()[0]:
-                    t = p1.set_target(p1.coin_utils.pop()[1], 'coin')
-                    if not t:
-                        p1.set_target(None, None)
             if dist(p1.mpos, p1.target_pos) == 0:
                 p1.set_target(None, None)
             else:
                 next_dir = p1.next_dir_to_target()
         if not p1.has_valid_target():
-            if len(p1.foods) > 0 and p1.hunger < p1.p['low_hunger_thresh'] and food_dists[0][0] < p1.p['seek_food_range']:
+            if len(p1.foods) > 0 and p1.hunger < low_hunger_thresh and food_dists[0][0] < seek_food_range:
                 t = p1.set_target(food_dists[0][1], 'food')
                 if not t:
                     p1.set_target(None, None)
                 else:
                     next_dir = p1.next_dir_to_target()
-            elif len(p1.pots) > 0 and p1.stamina < p1.p['low_stam_thresh'] and pot_dists[0][0] < p1.p['seek_pot_range']:
+            elif len(p1.pots) > 0 and p1.stamina < low_stam_thresh and pot_dists[0][0] < seek_pot_range:
                 t = p1.set_target(pot_dists[0][1], 'pot')
                 if not t:
                     p1.set_target(None, None)
                 else:
                     next_dir = p1.next_dir_to_target()
             elif len(p1.coins) > 0:
-                p1.refresh_coin_utils()
-                t = p1.set_target(p1.coin_utils.pop()[1], 'coin')
-                if not t:
-                    p1.set_target(None, None)
-                else:
-                    next_dir = p1.next_dir_to_target()
+                em_move = p1.expectimax(pos=p1.mpos, depth=7)
+                if p1.verbosity > 0:
+                    print('Expectimax Move:', em_move)
+                next_dir = em_move[1]
     return p1.move(next_dir)

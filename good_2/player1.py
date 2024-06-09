@@ -76,8 +76,6 @@ class Player1:
 
         self.last_mpos = self_position
         self.last_opos = other_agent_position
-        self.m_visited = np.zeros((30, 40))
-        self.o_visited = np.zeros((30, 40))
 
         self.target_pos = None
         self.target_type = None
@@ -95,8 +93,6 @@ class Player1:
 
         self.mpos = self_position
         self.opos = other_agent_position
-        self.m_visited[self.mpos[1]][self.mpos[0]] = 1
-        self.o_visited[self.opos[1]][self.opos[0]] = 1
 
         self.map = np.array(dungeon_map)
         self.coins = np.array(coins)
@@ -247,14 +243,14 @@ class Player1:
             i_dy = i * math.sin(theta)
             i_pos = sim_move_2(a, (round(i_dx), round(i_dy)))
             if self.read_map(i_pos) == 'wall':
-                d += 3
+                d += 2
             else:
                 d += 1
         return d
 
     def calc_cu(self, coin):
         mrd = self.realistic_dist(self.mpos, coin)
-        u = self.p['cvw_greed'] * -mrd + self.p['cvw_fear'] * self.realistic_dist(self.opos, coin)
+        u = self.p['cvw_m_dist'] * -mrd + self.p['cvw_o_dist'] * self.realistic_dist(self.opos, coin)
         for off in surround_2:
             neighbor = sim_move_2(coin, off)
             if self.is_traversable(neighbor) and self.read_map(neighbor) == 'coin':
@@ -272,12 +268,6 @@ class Player1:
                 cpos = sim_move(cpos, move)
                 if self.read_map(cpos) == 'coin':
                     u += self.p['cvw_coin_in_route']
-                elif self.read_map(cpos) == 'floor':
-                    u -= self.p['cvw_floor_penalty']
-                if self.m_visited[cpos[1]][cpos[0]] == 1:
-                    u -= self.p['cvw_backtrack_penalty']
-                if self.o_visited[cpos[1]][cpos[0]] == 1:
-                    u -= self.p['cvw_goblin_penalty']
         # u = sigmoid(u)
         return u
     
@@ -314,21 +304,17 @@ params = {
     'reroute_pot_range': 5,
     'high_stam_thresh': 40,
 
-    'cvw_greed': 7,
-    'cvw_greed_init': 7,
-    'cvw_greed_inc': 0.25,
-    'cvw_fear': 2,
+    'cvw_m_old_dist': 5,
+    'cvw_m_dist': 7,
+    'cvw_o_dist': 3,
     'cvw_surround': 7,
-    'cvw_coin_in_route': 15,
-    'cvw_backtrack_penalty': 15,
-    'cvw_floor_penalty': 10,
-    'cvw_goblin_penalty': 20,
+    'cvw_coin_in_route': 7,
 
     'cvw_food_range': 10,
-    'cvw_food_near': 150,
+    'cvw_food_near': 100,
 
     'cvw_pot_range': 10,
-    'cvw_pot_near': 150
+    'cvw_pot_near': 100
 }
 
 def player1_logic(coins, potions, foods, dungeon_map, self_position, other_agent_position):
@@ -342,7 +328,26 @@ def player1_logic(coins, potions, foods, dungeon_map, self_position, other_agent
     food_dists = sorted([ (p1.realistic_dist(self_position, food), tuple(food)) for food in p1.foods ], key=itemgetter(0))
     p1.refresh_coin_utils()
 
-    p1.p['cvw_greed'] = p1.p['cvw_greed_inc'] * (50 - p1.hunger) + p1.p['cvw_greed_init']
+    if p1.turn % 50 == 0:
+        p1.p['cvw_m_dist'] += 1
+    # if p1.turn % 20 == 0:
+    #     p1.p['cvw_surround'] = max(p1.p['cvw_surround'] - 10, 5)
+
+    # n_surround = 0
+    # for off in surround_3:
+    #     n_pos = sim_move_2(p1.mpos, off)
+    #     if p1.is_traversable(n_pos) and p1.read_map(n_pos) == 'coin':
+    #         n_surround += 1
+    # n_surround /= surround_3.shape[0]
+    # if n_surround > 0.5 and p1.p['cvw_m_dist'] < 50:
+    #     p1.p['cvw_m_old_dist'] = p1.p['cvw_m_dist']
+    #     p1.p['cvw_m_dist'] = 50
+    #     if p1.verbosity > 0:
+    #         print('IN HIGH DENSITY AREA')
+    # if n_surround < 0.2 and p1.p['cvw_m_dist'] >= 50:
+    #     p1.p['cvw_m_dist'] = p1.p['cvw_m_old_dist']
+    #     if p1.verbosity > 0:
+    #         print('LEFT HIGH DENSITY AREA')
 
     next_dir = 'I'
     if (p1.stamina > 10 and p1.hunger > 0) or p1.hunger == 0:
