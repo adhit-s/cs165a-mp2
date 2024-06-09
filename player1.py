@@ -3,7 +3,7 @@ import numpy as np
 import heapq
 import math
 import sys
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -44,6 +44,7 @@ def dist(a, b):
     return euclidean_distance(a, b)
 
 def sigmoid(x):
+    x = min(-200, max(x, 200))
     return 1 / (1 + math.pow(math.e, -x))
 
 class PrioritySet(object):
@@ -278,7 +279,6 @@ class Player1:
                     u -= self.p['cvw_backtrack_penalty']
                 if self.o_visited[cpos[1]][cpos[0]] == 1:
                     u -= self.p['cvw_goblin_penalty']
-        # u = sigmoid(u)
         return u
     
     def refresh_coin_utils(self):
@@ -288,16 +288,16 @@ class Player1:
             u = self.calc_cu(coin)
             self.coin_utils.push(-u, tuple(coin))
             cu_map[coin[1]][coin[0]] = u
-#         heatmap.set_data(cu_map)
-#         fig.canvas.draw()
-#         fig.canvas.flush_events()
-#         plt.show()
+        heatmap.set_data(cu_map)
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        plt.show()
 
-# fig, ax = plt.subplots()
-# heatmap = ax.imshow(np.zeros(shape=(30, 40)), cmap='hot', interpolation='none')
-# cbar = plt.colorbar(heatmap)
-# plt.ion()
-# plt.show()
+fig, ax = plt.subplots()
+heatmap = ax.imshow(np.zeros(shape=(30, 40)), cmap='hot', interpolation='none')
+cbar = plt.colorbar(heatmap)
+plt.ion()
+plt.show()
 
 p1 = None
 
