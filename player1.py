@@ -44,7 +44,7 @@ def dist(a, b):
     return euclidean_distance(a, b)
 
 def sigmoid(x):
-    x = min(-200, max(x, 200))
+    x = max(-400, min(x, 400))
     return 1 / (1 + math.pow(math.e, -x))
 
 class PrioritySet(object):
@@ -287,7 +287,7 @@ class Player1:
         for coin in self.coins:
             u = self.calc_cu(coin)
             self.coin_utils.push(-u, tuple(coin))
-            cu_map[coin[1]][coin[0]] = u
+            cu_map[coin[1]][coin[0]] = sigmoid(u)
         heatmap.set_data(cu_map)
         fig.canvas.draw()
         fig.canvas.flush_events()
@@ -302,31 +302,39 @@ plt.show()
 p1 = None
 
 params = {
+    # Grab food when low on hunger
     'seek_food_range': 30,
     'low_hunger_thresh': 25,
 
+    # Grab food when it's really close
     'reroute_food_range': 5,
     'high_hunger_thresh': 40,
 
+    # Grab potion when low on stamina
     'seek_pot_range': 20,
     'low_stam_thresh': 25,
 
+    # Grab potion when it's really close 
     'reroute_pot_range': 5,
     'high_stam_thresh': 40,
 
-    'cvw_greed': 7,
+    'cvw_greed': 7, # Reward for coins that are closer to us
     'cvw_greed_init': 7,
-    'cvw_greed_inc': 0.25,
-    'cvw_fear': 2,
-    'cvw_surround': 7,
-    'cvw_coin_in_route': 15,
-    'cvw_backtrack_penalty': 15,
-    'cvw_floor_penalty': 10,
+    'cvw_greed_inc': 0.25, # Linear scaling of greed with hunger
+    'cvw_fear': 2, # Reward for coins that are further from opponent
+    'cvw_surround': 7, # Reward for coins in a cluster
+    # Reward for coins for which the route to get there has coins on the way
+    'cvw_coin_in_route': 15, 
+    'cvw_floor_penalty': 10, # Penalty for visiting empty spaces
+    'cvw_backtrack_penalty': 15, # Penalty for visiting already visited spaces
+    # Penalty for visiting spaces the opponent has already visited
     'cvw_goblin_penalty': 20,
 
+    # Reward for coins with food nearby
     'cvw_food_range': 10,
     'cvw_food_near': 150,
 
+    # Reward for coins with potions nearby
     'cvw_pot_range': 10,
     'cvw_pot_near': 150
 }
